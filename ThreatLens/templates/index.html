@@ -4,631 +4,206 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ThreatLens — Endpoint Behavioral Analysis Engine</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        
-        * { font-family: 'Inter', system-ui, sans-serif; }
-        body { background: #0a0a0f; color: #e2e8f0; min-height: 100vh; }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #1a1a2e; }
-        ::-webkit-scrollbar-thumb { background: #4a4a6a; border-radius: 3px; }
-        
-        /* Drag & Drop Zone */
-        .drop-zone { 
-            border: 2px dashed #4a4a6a; 
-            transition: all 0.3s ease;
-            background: rgba(30, 30, 50, 0.5);
-        }
-        .drop-zone:hover, .drop-zone.drag-over { 
-            border-color: #60a5fa; 
-            background: rgba(96, 165, 250, 0.08);
-            box-shadow: 0 0 30px rgba(96, 165, 250, 0.1);
-        }
-        
-        /* Severity Colors */
-        .sev-critical { color: #ef4444; border-left: 4px solid #ef4444; }
-        .sev-high { color: #f97316; border-left: 4px solid #f97316; }
-        .sev-medium { color: #eab308; border-left: 4px solid #eab308; }
-        .sev-low { color: #22c55e; border-left: 4px solid #22c55e; }
-        
-        .sev-bg-critical { background: rgba(239, 68, 68, 0.12); }
-        .sev-bg-high { background: rgba(249, 115, 22, 0.12); }
-        .sev-bg-medium { background: rgba(234, 179, 8, 0.12); }
-        .sev-bg-low { background: rgba(34, 197, 94, 0.12); }
-        
-        /* Cards */
-        .threat-card {
-            background: rgba(30, 30, 50, 0.6);
-            border: 1px solid rgba(255,255,255,0.06);
-            transition: all 0.2s ease;
-            cursor: pointer;
-        }
-        .threat-card:hover {
-            background: rgba(40, 40, 70, 0.8);
-            border-color: rgba(255,255,255,0.12);
-            transform: translateY(-1px);
-        }
-        
-        /* Loading Spinner */
-        .spinner {
-            width: 48px; height: 48px;
-            border: 4px solid rgba(96, 165, 250, 0.2);
-            border-top: 4px solid #60a5fa;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
-        /* Pulse animation for status badge */
-        .pulse-dot {
-            width: 8px; height: 8px; border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-        
-        /* Summary stat cards */
-        .stat-card {
-            background: rgba(30, 30, 50, 0.8);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
-            padding: 16px 20px;
-            text-align: center;
-            min-width: 110px;
-        }
-        
-        /* Fade in animation */
-        .fade-in {
-            animation: fadeIn 0.4s ease-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Detail panel */
-        .detail-panel {
-            background: #12121f;
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-        
-        /* AI Analysis box */
-        .ai-box {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(168, 85, 247, 0.08));
-            border: 1px solid rgba(99, 102, 241, 0.2);
-            border-radius: 12px;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="antialiased">
-    
-    <!-- ═══════════ HEADER ═══════════ -->
-    <header class="border-b border-white/5 px-6 py-4">
-        <div class="max-w-7xl mx-auto flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="text-2xl">🛡️</div>
+<body>
+
+    <!-- ═══════════ TOP BAR ═══════════ -->
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">
+                <div class="brand-icon">🛡️</div>
                 <div>
-                    <h1 class="text-xl font-bold text-white tracking-tight">ThreatLens</h1>
-                    <p class="text-xs text-gray-500">Endpoint Behavioral Analysis Engine</p>
+                    <div class="brand-title">ThreatLens</div>
+                    <div class="brand-sub">Offline-First ProcMon Behavioral Threat Analyzer</div>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
-                <div id="statusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-white/5">
-                    <div class="pulse-dot bg-gray-500"></div>
+            <div class="topbar-actions">
+                <div id="statusBadge" class="status-pill">
+                    <span class="dot"></span>
                     <span>Checking...</span>
                 </div>
-                <div id="exportButtons" class="hidden flex items-center gap-2">
-                    <button onclick="exportCSV()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 transition flex items-center gap-1.5">
-                        📊 CSV
-                    </button>
-                    <button onclick="exportPDF()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 transition flex items-center gap-1.5">
-                        📄 PDF
-                    </button>
+                <div id="exportButtons" class="hidden" style="display:flex; gap:8px;">
+                    <button class="btn btn-sm" onclick="exportCSV()">📊 Export CSV</button>
+                    <button class="btn btn-sm" onclick="exportPDF()">📄 Export PDF</button>
                 </div>
             </div>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-6 py-8">
-        
-        <!-- ═══════════ UPLOAD SCREEN ═══════════ -->
-        <div id="uploadScreen">
-            <div class="text-center mb-8">
-                <h2 class="text-3xl font-bold text-white mb-2">Analyze ProcMon Logs</h2>
-                <p class="text-gray-400 max-w-lg mx-auto">
-                    Upload your ProcMon CSV export to scan for Ring 0 (Kernel) and Ring 3 (User-Mode) security threats with AI-powered contextual analysis.
+    <main class="container">
+
+        <!-- ═══════════ SCREEN 1: UPLOAD ═══════════ -->
+        <section id="uploadScreen">
+            <div class="hero">
+                <h2>Analyze ProcMon System Logs</h2>
+                <p>
+                    Upload any Sysinternals ProcMon CSV capture to detect Ring 0 (Kernel) and Ring 3 (User-Mode)
+                    vulnerabilities in chronological order — works seamlessly both offline and online.
                 </p>
             </div>
-            
-            <div class="max-w-2xl mx-auto">
-                <!-- Drop Zone -->
-                <div id="dropZone" class="drop-zone rounded-2xl p-12 text-center cursor-pointer"
-                     onclick="document.getElementById('fileInput').click()">
-                    <div class="text-5xl mb-4">📁</div>
-                    <p class="text-lg font-medium text-gray-300 mb-1">Drag & Drop ProcMon CSV</p>
-                    <p class="text-sm text-gray-500">or click to browse files</p>
+
+            <div class="upload-card">
+                <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+                    <div class="drop-icon">📁</div>
+                    <div class="drop-title">Drag &amp; Drop ProcMon CSV here</div>
+                    <div class="drop-sub">or click to browse from your PC (.csv)</div>
                     <input type="file" id="fileInput" accept=".csv,.CSV" class="hidden">
                 </div>
-                
-                <!-- File Info (shown after selection) -->
-                <div id="fileInfo" class="hidden mt-4 p-4 rounded-xl bg-white/5 flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <span class="text-2xl">📄</span>
-                        <div>
-                            <p id="fileName" class="text-sm font-medium text-white"></p>
-                            <p id="fileSize" class="text-xs text-gray-500"></p>
+
+                <div id="fileInfo" class="file-bar hidden">
+                    <div class="file-meta">
+                        <span style="font-size:1.3rem;">📄</span>
+                        <div style="min-width:0;">
+                            <div id="fileName" class="file-name"></div>
+                            <div id="fileSize" class="file-size"></div>
                         </div>
                     </div>
-                    <button onclick="clearFile()" class="text-gray-500 hover:text-red-400 transition">✕</button>
+                    <button class="btn btn-sm" onclick="clearFile()" title="Remove file">✕</button>
                 </div>
-                
-                <!-- Analyze Button -->
-                <button id="analyzeBtn" onclick="analyzeFile()" disabled
-                        class="mt-6 w-full py-3.5 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition text-sm tracking-wide">
-                    🔍 Analyze Logs
-                </button>
-                
-                <!-- Help Text -->
-                <div class="mt-8 p-4 rounded-xl bg-white/[0.03] text-xs text-gray-500">
-                    <p class="font-medium text-gray-400 mb-2">📋 How to get ProcMon CSV logs:</p>
-                    <ol class="list-decimal list-inside space-y-1">
-                        <li>Download <a href="https://learn.microsoft.com/en-us/sysinternals/downloads/procmon" target="_blank" class="text-blue-400 hover:underline">ProcMon from Sysinternals</a></li>
-                        <li>Run ProcMon → let it capture activity (30-60 seconds)</li>
-                        <li>File → Save → Choose <strong>"Comma-Separated Values (CSV)"</strong></li>
-                        <li>Upload the .csv file here</li>
+
+                <div class="mode-row">
+                    <div class="mode-label">
+                        <strong>Privacy &amp; AI Mode:</strong> LLM reasoning runs ONLY when online; offline automatically locks into <strong>Data Privacy Mode</strong> (100% local Python engine).
+                    </div>
+                    <div class="toggle-group">
+                        <button id="modeAutoBtn" class="toggle-opt active" onclick="setScanMode('auto')">Auto (AI when Online)</button>
+                        <button id="modeOfflineBtn" class="toggle-opt" onclick="setScanMode('offline')">🔒 Data Privacy Mode</button>
+                    </div>
+                </div>
+
+                <div class="action-row">
+                    <button id="analyzeBtn" class="btn btn-primary btn-lg" onclick="analyzeFile()" disabled>
+                        🔍 Analyze ProcMon Logs
+                    </button>
+                    <button class="btn" onclick="runSampleDemo()" title="Run built-in Ring 0 + Ring 3 attack capture">
+                        ⚡ Load Sample Demo
+                    </button>
+                </div>
+
+                <div class="help-box">
+                    <p>How to capture a ProcMon CSV on any Windows PC (Offline or Online):</p>
+                    <ol>
+                        <li>Open Sysinternals <strong>ProcMon</strong> and capture system activity (30–60 sec).</li>
+                        <li>Go to <strong>File → Save...</strong> and select <strong>Comma-Separated Values (CSV)</strong>.</li>
+                        <li>Upload the saved <code>.csv</code> file above to get an ordered threat timeline &amp; PDF/CSV report.</li>
                     </ol>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- ═══════════ LOADING SCREEN ═══════════ -->
-        <div id="loadingScreen" class="hidden text-center py-20">
-            <div class="spinner mx-auto mb-6"></div>
-            <p class="text-lg font-medium text-white mb-1">Scanning for threats...</p>
-            <p id="loadingStatus" class="text-sm text-gray-500">Parsing CSV log entries</p>
-        </div>
+        <!-- ═══════════ SCREEN 2: TRANSITION / SCANNING STEPPER ═══════════ -->
+        <section id="loadingScreen" class="hidden">
+            <div class="loading-card">
+                <div class="spinner"></div>
+                <h3 style="font-size:1.15rem; font-weight:700;">Analyzing Endpoint Telemetry</h3>
+                <p style="font-size:0.84rem; color:var(--text-secondary); margin-top:4px;">
+                    Correlating timestamps and scanning Ring 0 / Ring 3 operations...
+                </p>
 
-        <!-- ═══════════ RESULTS DASHBOARD ═══════════ -->
-        <div id="resultsScreen" class="hidden fade-in">
-            
-            <!-- Summary Stats -->
-            <div class="flex items-center justify-between mb-6">
+                <div class="steps-list">
+                    <div id="step1" class="step-item">1. Parsing ProcMon CSV columns</div>
+                    <div id="step2" class="step-item">2. Running Ring 0 &amp; Ring 3 Heuristic Rules</div>
+                    <div id="step3" class="step-item">3. AI Threat Contextualization (or Offline Fallback)</div>
+                    <div id="step4" class="step-item">4. Building Chronological Timeline &amp; Report</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════ SCREEN 3: RESULTS DASHBOARD ═══════════ -->
+        <section id="resultsScreen" class="hidden">
+            <div class="results-header">
                 <div>
-                    <h2 class="text-2xl font-bold text-white">Scan Results</h2>
-                    <p id="resultsMeta" class="text-sm text-gray-500 mt-0.5"></p>
+                    <h2>Threat Analysis Dashboard</h2>
+                    <div id="resultsMeta" class="results-meta"></div>
                 </div>
-                <button onclick="newScan()" class="px-4 py-2 rounded-lg text-sm font-medium bg-white/5 hover:bg-white/10 transition">
-                    🔄 New Scan
-                </button>
+                <button class="btn" onclick="newScan()">🔄 New Scan</button>
             </div>
-            
-            <!-- Severity Summary Cards -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-                <div class="stat-card">
-                    <p class="text-3xl font-bold text-red-500" id="statCritical">0</p>
-                    <p class="text-xs text-gray-400 mt-1 uppercase tracking-wider">Critical</p>
+
+            <!-- Severity KPI Cards -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div id="statCritical" class="kpi-val text-critical">0</div>
+                    <div class="kpi-lbl">Critical</div>
                 </div>
-                <div class="stat-card">
-                    <p class="text-3xl font-bold text-orange-500" id="statHigh">0</p>
-                    <p class="text-xs text-gray-400 mt-1 uppercase tracking-wider">High</p>
+                <div class="kpi-card">
+                    <div id="statHigh" class="kpi-val text-high">0</div>
+                    <div class="kpi-lbl">High</div>
                 </div>
-                <div class="stat-card">
-                    <p class="text-3xl font-bold text-yellow-500" id="statMedium">0</p>
-                    <p class="text-xs text-gray-400 mt-1 uppercase tracking-wider">Medium</p>
+                <div class="kpi-card">
+                    <div id="statMedium" class="kpi-val text-medium">0</div>
+                    <div class="kpi-lbl">Medium</div>
                 </div>
-                <div class="stat-card">
-                    <p class="text-3xl font-bold text-green-500" id="statLow">0</p>
-                    <p class="text-xs text-gray-400 mt-1 uppercase tracking-wider">Low</p>
+                <div class="kpi-card">
+                    <div id="statLow" class="kpi-val text-low">0</div>
+                    <div class="kpi-lbl">Low</div>
                 </div>
             </div>
-            
-            <!-- AI Analysis Section (shown when available) -->
-            <div id="aiSection" class="hidden ai-box p-6 mb-8 fade-in">
-                <div class="flex items-center gap-2 mb-4">
-                    <span class="text-lg">🤖</span>
-                    <h3 class="text-sm font-semibold text-indigo-300 uppercase tracking-wider">AI Threat Analysis</h3>
-                    <span class="ml-auto px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-300" id="aiRiskBadge"></span>
+
+            <!-- AI Contextualization Panel -->
+            <div id="aiSection" class="ai-panel hidden">
+                <div class="ai-header">
+                    <span class="ai-title">🤖 AI Threat Contextualization</span>
+                    <span id="aiRiskBadge" class="risk-badge"></span>
                 </div>
-                <p id="aiAnalysis" class="text-sm text-gray-300 leading-relaxed mb-4"></p>
+                <div id="aiAnalysis" class="ai-body"></div>
                 <div id="aiChain" class="hidden">
-                    <h4 class="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-2">Attack Chain</h4>
-                    <p id="aiChainText" class="text-sm text-gray-400 leading-relaxed mb-4 whitespace-pre-line"></p>
+                    <div class="ai-subhead">Reconstructed Attack Chain</div>
+                    <div id="aiChainText" class="ai-body"></div>
                 </div>
                 <div id="aiRecs" class="hidden">
-                    <h4 class="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-2">Recommendations</h4>
-                    <ul id="aiRecsList" class="text-sm text-gray-400 space-y-1.5"></ul>
+                    <div class="ai-subhead">Recommended Remediation</div>
+                    <ul id="aiRecsList" class="ai-recs"></ul>
                 </div>
             </div>
-            
-            <!-- Filter Bar -->
-            <div class="flex items-center gap-3 mb-4">
-                <span class="text-xs text-gray-500 uppercase tracking-wider">Filter:</span>
-                <button onclick="filterThreats('all')" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-white/10 text-white" data-filter="all">All</button>
-                <button onclick="filterThreats('critical')" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-white/5 text-gray-400 hover:text-red-400" data-filter="critical">🔴 Critical</button>
-                <button onclick="filterThreats('high')" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-white/5 text-gray-400 hover:text-orange-400" data-filter="high">🟠 High</button>
-                <button onclick="filterThreats('medium')" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-white/5 text-gray-400 hover:text-yellow-400" data-filter="medium">🟡 Medium</button>
-                <button onclick="filterThreats('low')" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-white/5 text-gray-400 hover:text-green-400" data-filter="low">🟢 Low</button>
-            </div>
-            
-            <!-- Threat Timeline -->
-            <div id="threatTimeline" class="space-y-2">
-                <!-- Populated by JS -->
-            </div>
-            
-            <!-- No Threats Message -->
-            <div id="noThreats" class="hidden text-center py-16">
-                <div class="text-5xl mb-4">✅</div>
-                <h3 class="text-xl font-bold text-green-400 mb-2">No Threats Detected</h3>
-                <p class="text-sm text-gray-500">The uploaded ProcMon log appears clean. No suspicious Ring 0 or Ring 3 activity was identified.</p>
-            </div>
-        </div>
 
-        <!-- ═══════════ THREAT DETAIL MODAL ═══════════ -->
-        <div id="detailModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.7)">
-            <div class="detail-panel rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 fade-in">
-                <div class="flex items-center justify-between mb-4">
-                    <button onclick="closeDetail()" class="text-sm text-gray-500 hover:text-white transition">← Back to Dashboard</button>
-                    <button onclick="closeDetail()" class="text-gray-500 hover:text-red-400 text-lg transition">✕</button>
+            <!-- Filter & Search Toolbar -->
+            <div class="toolbar">
+                <div class="filter-group">
+                    <button class="filter-btn active" data-filter="all" onclick="filterThreats('all')">All Severities</button>
+                    <button class="filter-btn" data-filter="critical" onclick="filterThreats('critical')">🔴 Critical</button>
+                    <button class="filter-btn" data-filter="high" onclick="filterThreats('high')">🟠 High</button>
+                    <button class="filter-btn" data-filter="medium" onclick="filterThreats('medium')">🟡 Medium</button>
+                    <button class="filter-btn" data-filter="low" onclick="filterThreats('low')">🟢 Low</button>
                 </div>
-                <div id="detailContent">
-                    <!-- Populated by JS -->
+                <div class="filter-group">
+                    <button class="filter-btn active" data-ring="all" onclick="filterRing('all')">All Rings</button>
+                    <button class="filter-btn" data-ring="ring0" onclick="filterRing('ring0')">Ring 0 (Kernel)</button>
+                    <button class="filter-btn" data-ring="ring3" onclick="filterRing('ring3')">Ring 3 (User)</button>
+                    <input id="searchBox" class="search-input" type="text" placeholder="Search process, op, path..." oninput="renderTimeline()">
                 </div>
             </div>
-        </div>
+
+            <!-- Chronological Threat Timeline -->
+            <div id="threatTimeline" class="timeline"></div>
+
+            <!-- Clean Log State -->
+            <div id="noThreats" class="empty-state hidden">
+                <div style="font-size:2.5rem; margin-bottom:8px;">✅</div>
+                <h3 style="color:var(--sev-low); margin-bottom:4px;">No Threats Detected</h3>
+                <p style="font-size:0.86rem; color:var(--text-secondary);">
+                    No suspicious Ring 0 or Ring 3 behaviors were flagged in this ProcMon log.
+                </p>
+            </div>
+        </section>
 
     </main>
 
-    <!-- ═══════════ FOOTER ═══════════ -->
-    <footer class="border-t border-white/5 px-6 py-4 mt-12 text-center">
-        <p class="text-xs text-gray-600">ThreatLens v1.0 — SFIC 2026 | Endpoint Behavioral Analysis & Runtime Threat Detection Engine | CHARUSAT</p>
+    <!-- ═══════════ DETAIL MODAL ═══════════ -->
+    <div id="detailModal" class="modal-backdrop hidden" onclick="if (event.target === this) closeDetail()">
+        <div class="modal-panel">
+            <div class="modal-top">
+                <button class="btn btn-sm" onclick="closeDetail()">← Back to Dashboard</button>
+                <button class="btn btn-sm" onclick="closeDetail()">✕</button>
+            </div>
+            <div id="detailContent"></div>
+        </div>
+    </div>
+
+    <footer>
+        ThreatLens — SFIC 2026 | Endpoint Behavioral Analysis &amp; Runtime Threat Detection Engine | CHARUSAT, Anand, Gujarat
     </footer>
 
-    <script>
-        // ═══════════════════════════════════════
-        //  STATE
-        // ═══════════════════════════════════════
-        let currentFile = null;
-        let analysisData = null;
-        let currentFilter = 'all';
-
-        const sevEmoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
-        const sevLabel = { critical: 'CRITICAL', high: 'HIGH', medium: 'MEDIUM', low: 'LOW' };
-
-        // ═══════════════════════════════════════
-        //  INIT — Check status on load
-        // ═══════════════════════════════════════
-        (async function checkStatus() {
-            try {
-                const res = await fetch('/api/status');
-                const data = await res.json();
-                const badge = document.getElementById('statusBadge');
-                if (data.online && data.has_api_key) {
-                    badge.innerHTML = '<div class="pulse-dot bg-green-500"></div><span class="text-green-400">AI-Enhanced Mode</span>';
-                } else if (data.online) {
-                    badge.innerHTML = '<div class="pulse-dot bg-yellow-500"></div><span class="text-yellow-400">Online (No API Key)</span>';
-                } else {
-                    badge.innerHTML = '<div class="pulse-dot bg-red-500"></div><span class="text-red-400">Offline Mode</span>';
-                }
-            } catch {
-                const badge = document.getElementById('statusBadge');
-                badge.innerHTML = '<div class="pulse-dot bg-red-500"></div><span class="text-red-400">Offline Mode</span>';
-            }
-        })();
-
-        // ═══════════════════════════════════════
-        //  DRAG & DROP + FILE SELECT
-        // ═══════════════════════════════════════
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-
-        ['dragenter', 'dragover'].forEach(evt => {
-            dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-        });
-        ['dragleave', 'drop'].forEach(evt => {
-            dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
-        });
-        dropZone.addEventListener('drop', e => {
-            const files = e.dataTransfer.files;
-            if (files.length > 0) handleFile(files[0]);
-        });
-        fileInput.addEventListener('change', e => {
-            if (e.target.files.length > 0) handleFile(e.target.files[0]);
-        });
-
-        function handleFile(file) {
-            if (!file.name.toLowerCase().endsWith('.csv')) {
-                alert('Please upload a .CSV file (ProcMon CSV export).');
-                return;
-            }
-            currentFile = file;
-            document.getElementById('fileName').textContent = file.name;
-            document.getElementById('fileSize').textContent = formatBytes(file.size);
-            document.getElementById('fileInfo').classList.remove('hidden');
-            document.getElementById('analyzeBtn').disabled = false;
-        }
-
-        function clearFile() {
-            currentFile = null;
-            fileInput.value = '';
-            document.getElementById('fileInfo').classList.add('hidden');
-            document.getElementById('analyzeBtn').disabled = true;
-        }
-
-        function formatBytes(bytes) {
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-            return (bytes / 1048576).toFixed(1) + ' MB';
-        }
-
-        // ═══════════════════════════════════════
-        //  ANALYZE
-        // ═══════════════════════════════════════
-        async function analyzeFile() {
-            if (!currentFile) return;
-
-            // Show loading
-            document.getElementById('uploadScreen').classList.add('hidden');
-            document.getElementById('loadingScreen').classList.remove('hidden');
-            document.getElementById('loadingStatus').textContent = 'Parsing CSV log entries...';
-
-            const formData = new FormData();
-            formData.append('logfile', currentFile);
-
-            try {
-                document.getElementById('loadingStatus').textContent = 'Running threat detection engine...';
-                
-                const res = await fetch('/api/upload', { method: 'POST', body: formData });
-                const data = await res.json();
-
-                if (!res.ok || data.error) {
-                    alert(data.error || 'Analysis failed.');
-                    document.getElementById('loadingScreen').classList.add('hidden');
-                    document.getElementById('uploadScreen').classList.remove('hidden');
-                    return;
-                }
-
-                analysisData = data;
-                showResults(data);
-
-            } catch (err) {
-                alert('Error connecting to server: ' + err.message);
-                document.getElementById('loadingScreen').classList.add('hidden');
-                document.getElementById('uploadScreen').classList.remove('hidden');
-            }
-        }
-
-        // ═══════════════════════════════════════
-        //  RENDER RESULTS
-        // ═══════════════════════════════════════
-        function showResults(data) {
-            document.getElementById('loadingScreen').classList.add('hidden');
-            document.getElementById('resultsScreen').classList.remove('hidden');
-            document.getElementById('exportButtons').classList.remove('hidden');
-
-            // Meta
-            document.getElementById('resultsMeta').textContent = 
-                `${data.filename} — ${data.total_entries.toLocaleString()} entries scanned in ${data.scan_time} — Mode: ${data.mode === 'ai_enhanced' ? '🟢 AI-Enhanced' : '🟡 Offline'}`;
-
-            // Summary stats
-            document.getElementById('statCritical').textContent = data.summary.critical;
-            document.getElementById('statHigh').textContent = data.summary.high;
-            document.getElementById('statMedium').textContent = data.summary.medium;
-            document.getElementById('statLow').textContent = data.summary.low;
-
-            // AI Section
-            if (data.ai_result) {
-                const aiSec = document.getElementById('aiSection');
-                aiSec.classList.remove('hidden');
-                
-                document.getElementById('aiRiskBadge').textContent = 
-                    `Risk: ${data.ai_result.risk_score || '?'}/100 — ${data.ai_result.risk_label || 'N/A'}`;
-                document.getElementById('aiAnalysis').textContent = data.ai_result.ai_analysis || '';
-
-                if (data.ai_result.attack_chain) {
-                    document.getElementById('aiChain').classList.remove('hidden');
-                    document.getElementById('aiChainText').textContent = data.ai_result.attack_chain;
-                }
-
-                if (data.ai_result.recommendations && data.ai_result.recommendations.length > 0) {
-                    document.getElementById('aiRecs').classList.remove('hidden');
-                    const list = document.getElementById('aiRecsList');
-                    list.innerHTML = '';
-                    data.ai_result.recommendations.forEach((rec, i) => {
-                        const li = document.createElement('li');
-                        li.textContent = `${i + 1}. ${rec}`;
-                        list.appendChild(li);
-                    });
-                }
-            }
-
-            // Threats
-            if (data.timeline && data.timeline.length > 0) {
-                renderTimeline(data.timeline);
-            } else {
-                document.getElementById('noThreats').classList.remove('hidden');
-            }
-        }
-
-        function renderTimeline(threats) {
-            const container = document.getElementById('threatTimeline');
-            container.innerHTML = '';
-
-            const filtered = currentFilter === 'all' ? threats : threats.filter(t => t.severity === currentFilter);
-
-            if (filtered.length === 0) {
-                container.innerHTML = '<p class="text-center text-gray-500 py-8">No threats match this filter.</p>';
-                return;
-            }
-
-            filtered.forEach((threat, idx) => {
-                const card = document.createElement('div');
-                card.className = `threat-card rounded-xl p-4 sev-bg-${threat.severity} fade-in`;
-                card.style.animationDelay = `${Math.min(idx * 30, 300)}ms`;
-                card.onclick = () => showDetail(threat);
-
-                card.innerHTML = `
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-1">
-                                <span class="text-xs font-mono text-gray-500">${threat.timestamp}</span>
-                                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase sev-${threat.severity}" 
-                                      style="background:rgba(255,255,255,0.06)">
-                                    ${sevEmoji[threat.severity]} ${sevLabel[threat.severity]}
-                                </span>
-                                ${threat.mitre_id && threat.mitre_id !== 'N/A' ? 
-                                    `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono text-blue-400 bg-blue-500/10">${threat.mitre_id}</span>` : ''}
-                            </div>
-                            <h4 class="text-sm font-semibold text-white mb-0.5">${threat.threat_type}</h4>
-                            <p class="text-xs text-gray-400">
-                                <span class="text-gray-300">${threat.process_name}</span> (PID: ${threat.pid}) → ${threat.operation}
-                            </p>
-                            ${threat.path ? `<p class="text-xs text-gray-500 font-mono mt-1 truncate max-w-xl">${threat.path}</p>` : ''}
-                        </div>
-                        <span class="text-gray-600 text-xs ml-4">▸</span>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        // ═══════════════════════════════════════
-        //  FILTERS
-        // ═══════════════════════════════════════
-        function filterThreats(severity) {
-            currentFilter = severity;
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.toggle('bg-white/10', btn.dataset.filter === severity);
-                btn.classList.toggle('text-white', btn.dataset.filter === severity);
-                btn.classList.toggle('bg-white/5', btn.dataset.filter !== severity);
-            });
-            if (analysisData) renderTimeline(analysisData.timeline);
-        }
-
-        // ═══════════════════════════════════════
-        //  DETAIL MODAL
-        // ═══════════════════════════════════════
-        function showDetail(threat) {
-            const modal = document.getElementById('detailModal');
-            const content = document.getElementById('detailContent');
-
-            let relatedHTML = '';
-            if (threat.related_events && threat.related_events.length > 0) {
-                relatedHTML = `
-                    <div class="mt-6">
-                        <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Related Events (nearby)</h4>
-                        <div class="space-y-1.5">
-                            ${threat.related_events.map(e => `
-                                <div class="text-xs font-mono text-gray-500 flex gap-3">
-                                    <span class="text-gray-600 w-28 flex-shrink-0">${e.timestamp}</span>
-                                    <span class="text-gray-400">${e.operation}</span>
-                                    <span class="truncate">${e.path}</span>
-                                    <span class="text-gray-600">${e.result}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-
-            content.innerHTML = `
-                <div class="sev-${threat.severity} pl-4 mb-6">
-                    <span class="text-xs font-bold uppercase sev-${threat.severity}">${sevEmoji[threat.severity]} ${sevLabel[threat.severity]}</span>
-                    <h3 class="text-xl font-bold text-white mt-1">${threat.threat_type}</h3>
-                    <p class="text-xs text-gray-500 mt-1">${threat.category}</p>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4 mb-6">
-                    <div>
-                        <p class="text-xs text-gray-500">Timestamp</p>
-                        <p class="text-sm font-mono text-white">${threat.timestamp}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-gray-500">Process</p>
-                        <p class="text-sm text-white">${threat.process_name} <span class="text-gray-500">(PID: ${threat.pid})</span></p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-gray-500">Operation</p>
-                        <p class="text-sm font-mono text-white">${threat.operation}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-gray-500">Result</p>
-                        <p class="text-sm text-white">${threat.result}</p>
-                    </div>
-                </div>
-
-                ${threat.path ? `
-                    <div class="mb-4">
-                        <p class="text-xs text-gray-500">Path / Target</p>
-                        <p class="text-sm font-mono text-gray-300 break-all">${threat.path}</p>
-                    </div>
-                ` : ''}
-                
-                ${threat.detail ? `
-                    <div class="mb-4">
-                        <p class="text-xs text-gray-500">Detail</p>
-                        <p class="text-sm font-mono text-gray-300 break-all">${threat.detail}</p>
-                    </div>
-                ` : ''}
-
-                ${threat.mitre_id && threat.mitre_id !== 'N/A' ? `
-                    <div class="mb-4">
-                        <p class="text-xs text-gray-500">MITRE ATT&CK</p>
-                        <p class="text-sm text-blue-400">${threat.mitre_id}</p>
-                    </div>
-                ` : ''}
-
-                <div class="mt-6 p-4 rounded-xl bg-white/[0.03]">
-                    <p class="text-xs text-gray-500 uppercase tracking-wider mb-2 font-semibold">Why This Is A Threat</p>
-                    <p class="text-sm text-gray-300 leading-relaxed">${threat.description}</p>
-                </div>
-
-                ${relatedHTML}
-            `;
-
-            modal.classList.remove('hidden');
-        }
-
-        function closeDetail() {
-            document.getElementById('detailModal').classList.add('hidden');
-        }
-
-        // Close modal on backdrop click
-        document.getElementById('detailModal').addEventListener('click', e => {
-            if (e.target === document.getElementById('detailModal')) closeDetail();
-        });
-
-        // Close modal on Escape
-        document.addEventListener('keydown', e => {
-            if (e.key === 'Escape') closeDetail();
-        });
-
-        // ═══════════════════════════════════════
-        //  EXPORT
-        // ═══════════════════════════════════════
-        function exportCSV() { window.location.href = '/api/export/csv'; }
-        function exportPDF() { window.location.href = '/api/export/pdf'; }
-
-        // ═══════════════════════════════════════
-        //  NEW SCAN
-        // ═══════════════════════════════════════
-        function newScan() {
-            analysisData = null;
-            currentFile = null;
-            currentFilter = 'all';
-            fileInput.value = '';
-            document.getElementById('resultsScreen').classList.add('hidden');
-            document.getElementById('exportButtons').classList.add('hidden');
-            document.getElementById('aiSection').classList.add('hidden');
-            document.getElementById('noThreats').classList.add('hidden');
-            document.getElementById('fileInfo').classList.add('hidden');
-            document.getElementById('analyzeBtn').disabled = true;
-            document.getElementById('uploadScreen').classList.remove('hidden');
-        }
-    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

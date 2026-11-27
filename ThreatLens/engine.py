@@ -238,3 +238,84 @@ def get_entries_for_ai(entries: list[dict], threats: list[dict], max_rows: int =
             )
     
     return "\n".join(lines[:max_rows])
+
+
+def build_local_reasoning(analysis: dict) -> dict:
+    """
+    Generate structured pattern-finding and solution reasoning 100% locally in Python.
+    Used in Data Privacy Mode (offline or when LLM reasoning is disabled) so zero
+    log data ever leaves the user's device.
+    """
+    summary = analysis.get("summary", {})
+    timeline = analysis.get("timeline", [])
+    crit = summary.get("critical", 0)
+    high = summary.get("high", 0)
+    med = summary.get("medium", 0)
+    low = summary.get("low", 0)
+    total = summary.get("total_threats", 0)
+
+    if total == 0:
+        return {
+            "engine_source": "local_python_privacy",
+            "risk_score": 0,
+            "risk_label": "Clean (Local Verification)",
+            "ai_analysis": (
+                "Data Privacy Mode active — analyzed 100% locally on this PC with zero external API calls. "
+                "No Ring 0 (Kernel) or Ring 3 (User-Mode) threat patterns matched in the uploaded ProcMon log."
+            ),
+            "attack_chain": "No suspicious event sequence detected.",
+            "recommendations": [
+                "Keep ProcMon baseline captures for future comparison.",
+                "Continue periodic endpoint monitoring on shared workstations.",
+            ],
+        }
+
+    ring0_events = [t for t in timeline if "ring 0" in t.get("category", "").lower()]
+    ring3_events = [t for t in timeline if "ring 3" in t.get("category", "").lower()]
+    top_procs = ", ".join(f"{name} ({cnt})" for name, cnt in summary.get("top_processes", [])) or "Unknown"
+
+    risk_score = min(100, crit * 30 + high * 15 + med * 7 + low * 2)
+    if risk_score >= 75:
+        risk_label = "Critical Risk (Local Engine)"
+    elif risk_score >= 45:
+        risk_label = "High Risk (Local Engine)"
+    elif risk_score >= 20:
+        risk_label = "Medium Risk (Local Engine)"
+    else:
+        risk_label = "Low Risk (Local Engine)"
+
+    analysis_text = (
+        f"Data Privacy Mode active — all {analysis.get('total_entries', 0)} ProcMon events were processed "
+        f"100% locally using Python Ring 0/Ring 3 heuristics with zero data leaving this PC. "
+        f"Detected {total} suspicious event(s): {len(ring0_events)} Ring 0 (Kernel-Mode) and "
+        f"{len(ring3_events)} Ring 3 (User-Mode). Primary flagged processes: {top_procs}."
+    )
+
+    chain_steps = []
+    for idx, t in enumerate(timeline[:6], 1):
+        chain_steps.append(
+            f"{idx}. [{t['timestamp']}] {t['process_name']} (PID {t['pid']}) executed {t['operation']} "
+            f"-> {t['threat_type']} ({t['severity'].upper()})"
+        )
+    if len(timeline) > 6:
+        chain_steps.append(f"... plus {len(timeline) - 6} additional chronological event(s) in the timeline below.")
+
+    recs = []
+    if ring0_events:
+        recs.append("Ring 0 Alert: Audit newly registered/loaded .sys drivers and verify digital signatures before rebooting.")
+    if any("injection" in t.get("threat_type", "").lower() or "memory" in t.get("threat_type", "").lower() for t in timeline):
+        recs.append("Ring 3 Memory Alert: Isolate flagged injector processes and terminate unauthorized handles/threads.")
+    if any("persistence" in t.get("category", "").lower() for t in timeline):
+        recs.append("Persistence Alert: Inspect HKLM/HKCU Run keys, Services, and Startup folders for unauthorized entries.")
+    if not recs:
+        recs.append("Review the chronological timeline below and verify each flagged process against expected lab software.")
+    recs.append("Export the PDF/CSV report for offline incident documentation or campus IT review.")
+
+    return {
+        "engine_source": "local_python_privacy",
+        "risk_score": risk_score,
+        "risk_label": risk_label,
+        "ai_analysis": analysis_text,
+        "attack_chain": "\n".join(chain_steps),
+        "recommendations": recs,
+    }

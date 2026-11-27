@@ -19,8 +19,8 @@ from datetime import datetime
 from flask import Flask, request, render_template, jsonify, send_file, session
 import io
 
-from engine import parse_procmon_csv, analyze_logs, get_entries_for_ai
-from gemini_engine import is_online, analyze_with_gemini
+from engine import parse_procmon_csv, analyze_logs, get_entries_for_ai, build_local_reasoning
+from gemini_engine import is_online, analyze_with_gemini, get_api_key
 from exporter import export_csv, export_pdf
 
 app = Flask(__name__)
@@ -92,13 +92,23 @@ def api_upload():
     analysis = analyze_logs(entries)
     analysis["filename"] = filename
     
-    # --- Run AI analysis if online ---
+    # --- Run AI analysis ONLY when online + API key + ?ai=true; otherwise Data Privacy Mode ---
     ai_result = None
     use_ai = request.args.get("ai", "true").lower() != "false"
-    
-    if use_ai and analysis["summary"]["total_threats"] > 0:
+    online_now = is_online()
+    has_key = bool(get_api_key())
+    llm_used = False
+
+    if use_ai and online_now and has_key and analysis["summary"]["total_threats"] > 0:
         suspicious_text = get_entries_for_ai(entries, analysis["threats"])
         ai_result = analyze_with_gemini(suspicious_text, analysis["summary"])
+        if ai_result:
+            ai_result["engine_source"] = "gemini_llm"
+            llm_used = True
+
+    if not llm_used:
+        # Data Privacy Mode: 100% local Python pattern finding & solution reasoning
+        ai_result = build_local_reasoning(analysis)
     
     # Store for export
     _last_analysis = analysis
@@ -115,7 +125,8 @@ def api_upload():
         "threats": analysis["threats"][:200],  # Cap for JSON response
         "timeline": analysis["timeline"][:200],
         "ai_result": ai_result,
-        "mode": "ai_enhanced" if ai_result else "offline",
+        "mode": "ai_enhanced" if llm_used else "privacy_offline",
+        "privacy_mode": not llm_used,
     }
     
     return jsonify(response)

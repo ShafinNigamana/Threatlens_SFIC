@@ -170,12 +170,13 @@
                     <button class="filter-btn active" data-ring="all" onclick="filterRing('all')">All Rings</button>
                     <button class="filter-btn" data-ring="ring0" onclick="filterRing('ring0')">Ring 0 (Kernel)</button>
                     <button class="filter-btn" data-ring="ring3" onclick="filterRing('ring3')">Ring 3 (User)</button>
-                    <input id="searchBox" class="search-input" type="text" placeholder="Search process, op, path..." oninput="renderTimeline()">
+                    <input id="searchBox" class="search-input" type="text" placeholder="Search process, op, path..." oninput="renderTimeline(true)">
                 </div>
             </div>
 
             <!-- Chronological Threat Timeline -->
             <div id="threatTimeline" class="timeline"></div>
+            <div id="timelinePagination" class="pagination-bar hidden"></div>
 
             <!-- Clean Log State -->
             <div id="noThreats" class="empty-state hidden">

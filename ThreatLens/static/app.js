@@ -12,6 +12,8 @@ let analysisData = null;
 let currentFilter = "all";
 let currentRingFilter = "all";
 let scanMode = "auto"; // "auto" | "offline"
+let currentPage = 1;
+const PAGE_SIZE = 20;
 
 const SEV_EMOJI = { critical: "🔴", high: "🟠", medium: "🟡", low: "🟢" };
 
@@ -233,21 +235,22 @@ function renderResults(data) {
 
   currentFilter = "all";
   currentRingFilter = "all";
+  currentPage = 1;
   document.getElementById("searchBox").value = "";
   updateFilterButtons();
-  renderTimeline();
+  renderTimeline(true);
 }
 
 function filterThreats(sev) {
   currentFilter = sev;
   updateFilterButtons();
-  renderTimeline();
+  renderTimeline(true);
 }
 
 function filterRing(ring) {
   currentRingFilter = ring;
   updateFilterButtons();
-  renderTimeline();
+  renderTimeline(true);
 }
 
 function updateFilterButtons() {
@@ -259,15 +262,59 @@ function updateFilterButtons() {
   });
 }
 
-function renderTimeline() {
+function changePage(page) {
+  currentPage = page;
+  renderTimeline(false);
+  document.getElementById("threatTimeline").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderPagination(totalItems, totalPages) {
+  const pag = document.getElementById("timelinePagination");
+  if (!pag) return;
+  if (totalItems <= PAGE_SIZE) {
+    pag.classList.add("hidden");
+    pag.innerHTML = "";
+    return;
+  }
+
+  const startNum = (currentPage - 1) * PAGE_SIZE + 1;
+  const endNum = Math.min(currentPage * PAGE_SIZE, totalItems);
+
+  let pageButtons = "";
+  const maxVisible = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+  let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+  if (endPage - startPage + 1 < maxVisible) {
+    startPage = Math.max(1, endPage - maxVisible + 1);
+  }
+
+  for (let p = startPage; p <= endPage; p++) {
+    pageButtons += `<button class="filter-btn ${p === currentPage ? "active" : ""}" onclick="changePage(${p})">${p}</button>`;
+  }
+
+  pag.classList.remove("hidden");
+  pag.innerHTML = `
+    <span class="pagination-info">Showing <strong>${startNum}–${endNum}</strong> of <strong>${totalItems}</strong> threats (Page ${currentPage} of ${totalPages})</span>
+    <div class="pagination-controls">
+      <button class="filter-btn" ${currentPage <= 1 ? "disabled" : ""} onclick="changePage(${currentPage - 1})">← Prev</button>
+      ${pageButtons}
+      <button class="filter-btn" ${currentPage >= totalPages ? "disabled" : ""} onclick="changePage(${currentPage + 1})">Next →</button>
+    </div>
+  `;
+}
+
+function renderTimeline(resetPage = false) {
   if (!analysisData) return;
+  if (resetPage) currentPage = 1;
   const container = document.getElementById("threatTimeline");
   const noThreats = document.getElementById("noThreats");
+  const pag = document.getElementById("timelinePagination");
   const query = document.getElementById("searchBox").value.trim().toLowerCase();
 
   const timeline = analysisData.timeline || [];
   if (timeline.length === 0) {
     container.innerHTML = "";
+    if (pag) pag.classList.add("hidden");
     noThreats.classList.remove("hidden");
     return;
   }
@@ -286,11 +333,17 @@ function renderTimeline() {
 
   if (filtered.length === 0) {
     container.innerHTML = '<div class="empty-state"><p>No threats match the selected filters.</p></div>';
+    if (pag) pag.classList.add("hidden");
     return;
   }
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + PAGE_SIZE);
+
   container.innerHTML = "";
-  filtered.forEach((t) => {
+  pageItems.forEach((t) => {
     const ringLabel = t.category.toLowerCase().includes("ring 0") ? "Ring 0 (Kernel)" :
                       t.category.toLowerCase().includes("ring 3") ? "Ring 3 (User)" : "Process";
     const card = document.createElement("div");
@@ -314,6 +367,8 @@ function renderTimeline() {
     `;
     container.appendChild(card);
   });
+
+  renderPagination(filtered.length, totalPages);
 }
 
 // ── Threat Detail Modal ──────────────────────────────────────────────────

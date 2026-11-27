@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ThreatLens — Endpoint Behavioral &amp; ProcMon Forensic Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Top Navigation Bar -->
+  <header class="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7l7-4z" />
+            <circle cx="12" cy="12" r="2.5" />
+          </svg>
+        </div>
+        <div>
+          <span class="text-base font-semibold tracking-tight text-slate-50">ThreatLens</span>
+          <p class="text-xs text-slate-400 hidden sm:block">Offline-First ProcMon Ring 0 / Ring 3 Analyzer</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span id="mode-badge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+          <span id="mode-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span id="mode-text">Checking mode...</span>
+        </span>
+        <div id="header-actions" class="hidden items-center gap-2">
+          <a href="/export/pdf" class="btn-interactive inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 min-h-[36px]">
+            <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+            </svg>
+            Export PDF
+          </a>
+          <a href="/export/csv" class="btn-interactive inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 min-h-[36px]">
+            Export CSV
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
+    <!-- SCREEN 1: HOME / UPLOAD -->
+    <section id="screen-upload" class="max-w-2xl mx-auto space-y-6">
+      <div class="text-center space-y-2">
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-50">
+          Endpoint Behavioral &amp; Memory Threat Analysis
+        </h1>
+        <p class="text-sm sm:text-base text-slate-400">
+          Upload a Sysinternals ProcMon CSV capture to detect Ring 3 process injection, Ring 0 driver abuse, and persistence indicators.
+        </p>
+      </div>
+
+      <div class="surface-card p-6 sm:p-8 space-y-6">
+        <div
+          id="dropzone"
+          tabindex="0"
+          role="button"
+          aria-label="Upload ProcMon CSV file by clicking or dragging and dropping"
+          class="cursor-pointer rounded-xl border-2 border-dashed border-slate-700 hover:border-cyan-500/70 bg-slate-900/60 p-8 sm:p-10 text-center transition-colors"
+        >
+          <input id="file-input" type="file" accept=".csv,text/csv" class="sr-only" />
+          <div class="mx-auto w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center text-cyan-400 mb-4">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          </div>
+          <p class="text-sm sm:text-base font-medium text-slate-100">
+            Drag &amp; drop ProcMon CSV here, or <span class="text-cyan-400 underline underline-offset-4">click to browse</span>
+          </p>
+          <p id="selected-file-label" class="mt-2 text-xs font-mono-tech text-slate-400">
+            Supports standard Sysinternals ProcMon CSV exports (up to 50 MB)
+          </p>
+        </div>
+
+        <div id="upload-error" role="alert" class="hidden rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"></div>
+
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <button
+            id="btn-analyze"
+            type="button"
+            disabled
+            class="btn-interactive flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 min-h-[44px]"
+          >
+            <svg id="analyze-icon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <path stroke-linecap="round" d="M21 21l-4.35-4.35" />
+            </svg>
+            <span id="analyze-btn-text">Analyze Logs</span>
+          </button>
+        </div>
+
+        <div class="pt-4 border-t border-slate-800 space-y-3">
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Quick Demo — Load Existing SFIC ProcMon Captures</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              data-sample="dryrun1"
+              class="sample-btn btn-interactive flex items-center justify-between px-4 py-3 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left min-h-[44px]"
+            >
+              <div>
+                <div class="text-sm font-medium text-slate-100">Dry Run 1 Capture</div>
+                <div class="text-xs font-mono-tech text-slate-400">Logfile_1_success_dryrun.CSV</div>
+              </div>
+              <span class="text-xs font-medium text-cyan-400">Load</span>
+            </button>
+            <button
+              type="button"
+              data-sample="dryrun2"
+              class="sample-btn btn-interactive flex items-center justify-between px-4 py-3 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left min-h-[44px]"
+            >
+              <div>
+                <div class="text-sm font-medium text-slate-100">Dry Run 2 Capture</div>
+                <div class="text-xs font-mono-tech text-slate-400">Logfile_2_success_dryrun.CSV</div>
+              </div>
+              <span class="text-xs font-medium text-cyan-400">Load</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="rounded-lg bg-slate-900/80 border border-slate-800 px-4 py-3 text-xs text-slate-400 flex items-start gap-2.5">
+          <svg class="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <path stroke-linecap="round" d="M12 16v-4m0-4h.01" />
+          </svg>
+          <span>Export your ProcMon capture as CSV first: <strong class="text-slate-200">ProcMon &rarr; File &rarr; Save &rarr; Comma-Separated Values (CSV)</strong>.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 2: ANALYSIS RESULTS DASHBOARD -->
+    <section id="screen-dashboard" class="hidden space-y-6">
+      <!-- Top Bar -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <h1 class="text-xl sm:text-2xl font-bold text-slate-50">Scan Results</h1>
+            <span id="dash-filename" class="px-2.5 py-0.5 rounded-md text-xs font-mono-tech bg-slate-800 text-cyan-300 border border-slate-700"></span>
+          </div>
+          <p id="dash-meta" class="text-sm text-slate-400 mt-1"></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btn-new-scan" type="button" class="btn-interactive inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 min-h-[40px]">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M5.6 18.4A9 9 0 0019 12M18.4 5.6A9 9 0 005 12" />
+            </svg>
+            New Scan
+          </button>
+        </div>
+      </div>
+
+      <!-- Severity Summary Filter Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" role="group" aria-label="Filter threats by severity">
+        <button type="button" data-sev="Critical" class="sev-card surface-card p-4 text-left hover:border-red-500/60 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-red-400">Critical</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+          </div>
+          <div id="count-critical" class="mt-2 text-2xl sm:text-3xl font-bold font-mono-tech text-slate-50">0</div>
+          <div class="text-xs text-slate-400 mt-0.5">Injection / Rootkit</div>
+        </button>
+        <button type="button" data-sev="High" class="sev-card surface-card p-4 text-left hover:border-orange-500/60 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-orange-400">High</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+          </div>
+          <div id="count-high" class="mt-2 text-2xl sm:text-3xl font-bold font-mono-tech text-slate-50">0</div>
+          <div class="text-xs text-slate-400 mt-0.5">Privilege / Persistence</div>
+        </button>
+        <button type="button" data-sev="Medium" class="sev-card surface-card p-4 text-left hover:border-yellow-500/60 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-yellow-400">Medium</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+          </div>
+          <div id="count-medium" class="mt-2 text-2xl sm:text-3xl font-bold font-mono-tech text-slate-50">0</div>
+          <div class="text-xs text-slate-400 mt-0.5">Profiling / Anomalies</div>
+        </button>
+        <button type="button" data-sev="Low" class="sev-card surface-card p-4 text-left hover:border-emerald-500/60 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Low</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+          </div>
+          <div id="count-low" class="mt-2 text-2xl sm:text-3xl font-bold font-mono-tech text-slate-50">0</div>
+          <div class="text-xs text-slate-400 mt-0.5">Audit / Telemetry</div>
+        </button>
+      </div>
+
+      <!-- AI Context Panel -->
+      <div id="ai-panel" class="surface-card p-5 space-y-2 border-cyan-500/30">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <h2 class="text-sm font-semibold text-slate-100">AI Attack-Chain Context</h2>
+          </div>
+          <span id="ai-status-tag" class="text-xs font-mono-tech px-2 py-0.5 rounded bg-slate-800 text-slate-300"></span>
+        </div>
+        <div id="ai-narrative" class="text-sm text-slate-300 whitespace-pre-line leading-relaxed"></div>
+      </div>
+
+      <!-- Filter & Search Controls -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div class="relative flex-1">
+          <label for="search-input" class="sr-only">Filter threats by process, operation, or path</label>
+          <input
+            id="search-input"
+            type="text"
+            placeholder="Filter by process, operation, or path..."
+            class="w-full pl-9 pr-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder-slate-500"
+          />
+          <svg class="w-4 h-4 text-slate-500 absolute left-3 top-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" />
+            <path stroke-linecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+        </div>
+        <button id="btn-clear-filter" type="button" class="hidden px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700">
+          Show All Severities
+        </button>
+      </div>
+
+      <!-- Threat Timeline -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">
+            Chronological Threat Timeline
+          </h2>
+          <span id="timeline-count" class="text-xs font-mono-tech text-slate-400"></span>
+        </div>
+        <div id="timeline-list" class="space-y-2.5"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN 3: DETAILED THREAT VIEW -->
+    <section id="screen-detail" class="hidden max-w-4xl mx-auto space-y-6">
+      <button id="btn-back-dashboard" type="button" class="btn-interactive inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 min-h-[40px]">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Dashboard
+      </button>
+
+      <div id="detail-card" class="surface-card p-6 sm:p-8 space-y-6"></div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      selectedFile: null,
+      analysis: null,
+      severityFilter: null,
+      searchQuery: "",
+    };
+
+    const els = {
+      screenUpload: document.getElementById("screen-upload"),
+      screenDashboard: document.getElementById("screen-dashboard"),
+      screenDetail: document.getElementById("screen-detail"),
+      headerActions: document.getElementById("header-actions"),
+      modeBadge: document.getElementById("mode-badge"),
+      modeDot: document.getElementById("mode-dot"),
+      modeText: document.getElementById("mode-text"),
+      dropzone: document.getElementById("dropzone"),
+      fileInput: document.getElementById("file-input"),
+      fileLabel: document.getElementById("selected-file-label"),
+      uploadError: document.getElementById("upload-error"),
+      btnAnalyze: document.getElementById("btn-analyze"),
+      analyzeBtnText: document.getElementById("analyze-btn-text"),
+      dashFilename: document.getElementById("dash-filename"),
+      dashMeta: document.getElementById("dash-meta"),
+      countCritical: document.getElementById("count-critical"),
+      countHigh: document.getElementById("count-high"),
+      countMedium: document.getElementById("count-medium"),
+      countLow: document.getElementById("count-low"),
+      aiStatusTag: document.getElementById("ai-status-tag"),
+      aiNarrative: document.getElementById("ai-narrative"),
+      searchInput: document.getElementById("search-input"),
+      btnClearFilter: document.getElementById("btn-clear-filter"),
+      timelineList: document.getElementById("timeline-list"),
+      timelineCount: document.getElementById("timeline-count"),
+      detailCard: document.getElementById("detail-card"),
+    };
+
+    const SEV_STYLES = {
+      Critical: { badge: "bg-red-500/15 text-red-300 border-red-500/40", dot: "bg-red-500" },
+      High: { badge: "bg-orange-500/15 text-orange-300 border-orange-500/40", dot: "bg-orange-500" },
+      Medium: { badge: "bg-yellow-500/15 text-yellow-300 border-yellow-500/40", dot: "bg-yellow-500" },
+      Low: { badge: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40", dot: "bg-emerald-500" },
+    };
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function showScreen(name) {
+      els.screenUpload.classList.toggle("hidden", name !== "upload");
+      els.screenDashboard.classList.toggle("hidden", name !== "dashboard");
+      els.screenDetail.classList.toggle("hidden", name !== "detail");
+      els.headerActions.classList.toggle("hidden", name === "upload");
+      els.headerActions.classList.toggle("flex", name !== "upload");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function refreshStatus() {
+      try {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+        if (data.online) {
+          els.modeDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+          els.modeText.textContent = "AI-Enhanced Mode";
+        } else {
+          els.modeDot.className = "w-2 h-2 rounded-full bg-amber-400";
+          els.modeText.textContent = "Offline Mode";
+        }
+      } catch {
+        els.modeDot.className = "w-2 h-2 rounded-full bg-amber-400";
+        els.modeText.textContent = "Offline Mode";
+      }
+    }
+
+    function setSelectedFile(file) {
+      state.selectedFile = file;
+      els.uploadError.classList.add("hidden");
+      if (file) {
+        const kb = (file.size / 1024).toFixed(1);
+        els.fileLabel.textContent = `${file.name} (${kb} KB)`;
+        els.btnAnalyze.disabled = false;
+      } else {
+        els.fileLabel.textContent = "Supports standard Sysinternals ProcMon CSV exports (up to 50 MB)";
+        els.btnAnalyze.disabled = true;
+      }
+    }
+
+    function setLoading(isLoading, label = "Analyze Logs") {
+      els.btnAnalyze.disabled = isLoading || (!state.selectedFile && label === "Analyze Logs");
+      els.analyzeBtnText.textContent = isLoading ? "Analyzing Capture..." : label;
+      document.querySelectorAll(".sample-btn").forEach((b) => (b.disabled = isLoading));
+    }
+
+    async function runAnalysis(formDataOrSample) {
+      els.uploadError.classList.add("hidden");
+      setLoading(true);
+      try {
+        const opts =
+          formDataOrSample instanceof FormData
+            ? { method: "POST", body: formDataOrSample }
+            : {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sample: formDataOrSample }),
+              };
+        const res = await fetch("/api/analyze", opts);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Analysis failed.");
+        }
+        state.analysis = data;
+        state.severityFilter = null;
+        state.searchQuery = "";
+        els.searchInput.value = "";
+        renderDashboard();
+        showScreen("dashboard");
+      } catch (err) {
+        els.uploadError.textContent = err.message;
+        els.uploadError.classList.remove("hidden");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function renderDashboard() {
+      const a = state.analysis;
+      els.dashFilename.textContent = a.filename;
+      els.dashMeta.textContent = `${a.total_events.toLocaleString()} events scanned • ${a.total_threats} threats flagged • ${a.processes.length} processes observed`;
+      els.countCritical.textContent = a.summary.Critical || 0;
+      els.countHigh.textContent = a.summary.High || 0;
+      els.countMedium.textContent = a.summary.Medium || 0;
+      els.countLow.textContent = a.summary.Low || 0;
+
+      if (a.ai && a.ai.mode === "online" && a.ai.narrative) {
+        els.aiStatusTag.textContent = "Gemini AI-Enhanced";
+        els.aiStatusTag.className = "text-xs font-mono-tech px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30";
+        els.aiNarrative.textContent = a.ai.narrative;
+      } else {
+        els.aiStatusTag.textContent = "Offline Rule Engine";
+        els.aiStatusTag.className = "text-xs font-mono-tech px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30";
+        els.aiNarrative.textContent =
+          `Running in Offline Mode (${a.ai?.reason || "local heuristics"}). All Ring 0 and Ring 3 threat patterns were evaluated locally with zero cloud dependency.`;
+      }
+
+      renderTimeline();
+    }
+
+    function renderTimeline() {
+      const threats = state.analysis?.threats || [];
+      const q = state.searchQuery.toLowerCase();
+      const filtered = threats.filter((t) => {
+        if (state.severityFilter && t.severity !== state.severityFilter) return false;
+        if (!q) return true;
+        return (
+          t.process.toLowerCase().includes(q) ||
+          t.operation.toLowerCase().includes(q) ||
+          t.path.toLowerCase().includes(q) ||
+          t.title.toLowerCase().includes(q) ||
+          t.threat_type.toLowerCase().includes(q)
+        );
+      });
+
+      els.btnClearFilter.classList.toggle("hidden", !state.severityFilter);
+      els.timelineCount.textContent = `Showing ${filtered.length} of ${threats.length} findings`;
+
+      if (!filtered.length) {
+        els.timelineList.innerHTML = `
+          <div class="surface-card p-8 text-center text-sm text-slate-400">
+            No matching threat events for the current filter.
+          </div>`;
+        return;
+      }
+
+      els.timelineList.innerHTML = filtered
+        .map((t) => {
+          const st = SEV_STYLES[t.severity] || SEV_STYLES.Low;
+          return `
+            <button
+              type="button"
+              data-id="${escapeHtml(t.id)}"
+              class="threat-row w-full surface-card p-4 hover:border-cyan-500/60 text-left transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+            >
+              <div class="space-y-1 min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-mono-tech text-xs text-slate-400">${escapeHtml(t.timestamp)}</span>
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${st.badge}">
+                    <span class="w-1.5 h-1.5 rounded-full ${st.dot}"></span>
+                    ${escapeHtml(t.severity)}
+                  </span>
+                  <span class="px-2 py-0.5 rounded text-xs font-mono-tech bg-slate-800 text-slate-300 border border-slate-700">
+                    ${escapeHtml(t.ring)}
+                  </span>
+                </div>
+                <div class="text-sm sm:text-base font-semibold text-slate-100 truncate">
+                  ${escapeHtml(t.title)}
+                </div>
+                <div class="text-xs font-mono-tech text-slate-400 truncate">
+                  ${escapeHtml(t.process)} (PID ${escapeHtml(t.pid)}) &bull; ${escapeHtml(t.operation)} &bull; ${escapeHtml(t.path)}
+                </div>
+              </div>
+              <span class="text-xs font-medium text-cyan-400 shrink-0">Inspect &rarr;</span>
+            </button>`;
+        })
+        .join("");
+
+      document.querySelectorAll(".threat-row").forEach((btn) => {
+        btn.addEventListener("click", () => openDetail(btn.dataset.id));
+      });
+    }
+
+    function openDetail(id) {
+      const t = (state.analysis?.threats || []).find((x) => x.id === id);
+      if (!t) return;
+      const st = SEV_STYLES[t.severity] || SEV_STYLES.Low;
+
+      const relatedHtml = (t.related_events || [])
+        .map(
+          (r) => `
+          <li class="px-3 py-2 rounded-lg text-xs font-mono-tech flex flex-wrap items-center gap-2 ${
+            r.is_current ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-200" : "bg-slate-900/70 text-slate-300"
+          }">
+            <span class="text-slate-400">${escapeHtml(r.timestamp)}</span>
+            <span class="font-semibold">${escapeHtml(r.process)}</span>
+            <span>${escapeHtml(r.operation)}</span>
+            <span class="text-slate-400 truncate max-w-md">${escapeHtml(r.path || "")}</span>
+            ${r.is_current ? '<span class="ml-auto text-cyan-300 font-semibold">THIS EVENT</span>' : ""}
+          </li>`
+        )
+        .join("");
+
+      els.detailCard.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${st.badge}">
+                <span class="w-1.5 h-1.5 rounded-full ${st.dot}"></span>
+                ${escapeHtml(t.severity.toUpperCase())}
+              </span>
+              <span class="text-xs font-mono-tech text-slate-400">${escapeHtml(t.id)} &bull; ${escapeHtml(t.threat_type)}</span>
+            </div>
+            <h2 class="text-xl font-bold text-slate-50">${escapeHtml(t.title)}</h2>
+          </div>
+          <span class="px-3 py-1 rounded-lg text-xs font-mono-tech bg-slate-800 text-cyan-300 border border-slate-700">${escapeHtml(t.ring)}</span>
+        </div>
+
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          <div class="bg-slate-900/60 rounded-lg p-3 border border-slate-800">
+            <dt class="text-xs text-slate-400">Timestamp</dt>
+            <dd class="mt-1 font-mono-tech text-slate-100">${escapeHtml(t.timestamp)}</dd>
+          </div>
+          <div class="bg-slate-900/60 rounded-lg p-3 border border-slate-800">
+            <dt class="text-xs text-slate-400">Process &amp; PID</dt>
+            <dd class="mt-1 font-mono-tech text-slate-100">${escapeHtml(t.process)} (PID: ${escapeHtml(t.pid)})</dd>
+          </div>
+          <div class="bg-slate-900/60 rounded-lg p-3 border border-slate-800">
+            <dt class="text-xs text-slate-400">Operation &amp; Result</dt>
+            <dd class="mt-1 font-mono-tech text-slate-100">${escapeHtml(t.operation)} (${escapeHtml(t.result)})</dd>
+          </div>
+          <div class="bg-slate-900/60 rounded-lg p-3 border border-slate-800">
+            <dt class="text-xs text-slate-400">Target Path</dt>
+            <dd class="mt-1 font-mono-tech text-slate-100 break-all">${escapeHtml(t.path)}</dd>
+          </div>
+        </dl>
+
+        ${
+          t.detail
+            ? `<div class="bg-slate-900/60 rounded-lg p-3 border border-slate-800">
+                 <div class="text-xs text-slate-400 mb-1">ProcMon Detail</div>
+                 <div class="text-xs font-mono-tech text-slate-200 break-all">${escapeHtml(t.detail)}</div>
+               </div>`
+            : ""
+        }
+
+        <div class="space-y-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Why This Is a Threat</h3>
+          <p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(t.why)}</p>
+        </div>
+
+        <div class="rounded-lg bg-cyan-500/10 border border-cyan-500/30 p-4 space-y-1">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-cyan-300">Recommended Action</h3>
+          <p class="text-sm text-slate-100">${escapeHtml(t.action)}</p>
+        </div>
+
+        <div class="space-y-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Related Events (&plusmn;2 seconds)</h3>
+          <ul class="space-y-1.5">${relatedHtml || '<li class="text-xs text-slate-500">No nearby events recorded.</li>'}</ul>
+        </div>
+      `;
+      showScreen("detail");
+    }
+
+    // Event Listeners
+    els.dropzone.addEventListener("click", () => els.fileInput.click());
+    els.dropzone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        els.fileInput.click();
+      }
+    });
+    els.dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      els.dropzone.classList.add("dropzone-active");
+    });
+    els.dropzone.addEventListener("dragleave", () => els.dropzone.classList.remove("dropzone-active"));
+    els.dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      els.dropzone.classList.remove("dropzone-active");
+      const file = e.dataTransfer?.files?.[0];
+      if (file) setSelectedFile(file);
+    });
+    els.fileInput.addEventListener("change", (e) => setSelectedFile(e.target.files?.[0] || null));
+
+    els.btnAnalyze.addEventListener("click", () => {
+      if (!state.selectedFile) return;
+      const fd = new FormData();
+      fd.append("file", state.selectedFile);
+      runAnalysis(fd);
+    });
+
+    document.querySelectorAll(".sample-btn").forEach((btn) => {
+      btn.addEventListener("click", () => runAnalysis(btn.dataset.sample));
+    });
+
+    document.querySelectorAll(".sev-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const sev = card.dataset.sev;
+        state.severityFilter = state.severityFilter === sev ? null : sev;
+        renderTimeline();
+      });
+    });
+
+    els.btnClearFilter.addEventListener("click", () => {
+      state.severityFilter = null;
+      renderTimeline();
+    });
+
+    els.searchInput.addEventListener("input", (e) => {
+      state.searchQuery = e.target.value;
+      renderTimeline();
+    });
+
+    document.getElementById("btn-new-scan").addEventListener("click", () => showScreen("upload"));
+    document.getElementById("btn-back-dashboard").addEventListener("click", () => showScreen("dashboard"));
+
+    refreshStatus();
+  </script>
+</body>
+</html>

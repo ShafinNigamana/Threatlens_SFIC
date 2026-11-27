@@ -1,0 +1,73 @@
+We have successfully , tested our project simultaneously multiple times. Ample amount of evidences were also gathered , showing the fixes, new proposals as well as certain notions that led to the development of the project. 
+Since  most of the research work for our university project work is completed , we wish to now proceed for the handing over of the project submission .
+
+->For which we need to completely , materialize few things and collect more robust material for  final valuation.
+->There are basically steps for completing the poster presentation , detailed information for which will be discussed in the below section for execution .
+
+--------------------------------------------------------------------------------------------------------------------------
+//This are few points shared by our project mentor to be followed.
+
+-> Note : Here there are few legal constraints that are to be majorly kept in mind while overseeing the project work they are as follows:
+
+
+1) Application of your project : 
+-> Explain the real world use of your project. Mention where it can be applied ,its importance and how it solves a specific problem. 
+My rough estimated response -> 
+
+
+2) Methodoloy (part mentioned in above poster criteria too)
+-> Describe  the step by step , process followed to develop your project, include details ,such as what sort of system design have we used for developing this project ,tools / software used , any algorithms or Techniques applied for overall workflow. 
+
+
+3) Results and Discussion ( again same as the 4th point in the above mentioned criteria for the poster) 
+-> Present the outcomes of your project with proper analyses, graphs , tables or timeline of the entire chronological events in the project , or screenshots if applicable . Discuss , the performance advantages , limitations ,and possible improvements. 
+--------------------------------------------------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------------------------------------------------
+
+//Poster response -> 
+ #Project Overview & Application
+->Title: Memory Watchdog and State Tamper Detection Engine.
+->Real-World Application: This project serves as a foundational model for endpoint security software, anti-tamper mechanisms in gaming, and critical system integrity monitors. It solves the problem of unauthorized user-mode memory manipulation by providing a localized, non-invasive alternative to high-privilege kernel-level drivers.
+->Importance: By utilizing the Windows API to monitor process memory without requiring Ring 0 access, the engine mitigates the risk of system-wide crashes (Blue Screens of Death) while maintaining robust security.
+
+
+1) Abstract
+->This project presents the design and implementation of a real-time Memory Watchdog and State Tamper Detection Engine developed in C++. The system architecture utilizes a distributed three-process model—Target Environment, State Injector, and Security Monitor—to simulate, detect, and neutralize unauthorized memory alterations. By leveraging specific Windows API functions for inter-process memory access, the engine provides an effective user-mode security solution that preserves application integrity and creates a comprehensive forensic audit trail through centralized logging.
+ 
+
+2) Introduction 
+In modern computing, unauthorized memory manipulation—ranging from game cheating to malicious process injection—presents a significant security challenge. Traditional solutions often rely on invasive kernel-level drivers that can compromise system stability and user privacy. This project explores a user-mode integrity check system that monitors "state objects" within a target process's virtual memory space.
+->Core Problem: User-mode programs can be exploited via WriteProcessMemory to bypass intended application logic.
+->Project Goal: To create an automated watchdog that detects logical anomalies and neutralizes them in real-time.
+
+
+3) Methodology
+->Environment Setup: Designing a "Shipwreck Survival" target app with vulnerable integer and boolean state objects.
+->API Integration: Implementing ReadProcessMemory for continuous polling and WriteProcessMemory for both injection (hack) and neutralization (watchdog).
+->Distributed Communication: Utilizing the Windows Tool Help Library (tlhelp32.h) to find and attach to specific Process IDs (PIDs).
+->Centralized Audit System: Developing a synchronized logging mechanism across all modules to record chronological events in a single security_audit_log.txt.
+
+
+
+4) Experimental setup 
+->Hardware: Standard x86-64 workstation.
+->Software/Tools: Code::Blocks IDE (TDM-GCC compiler), Sysinternals Process Monitor (Procmon) for system call verification, and standard Windows Command Prompt for demonstration.
+->Demonstration Workflow: A multi-terminal environment where the target app, watchdog, and injector run simultaneously to show cause-and-effect relationships.
+
+
+
+5) Test results discussions 
+->Success Metric: 100% detection rate of state tampering within a 10ms polling window.
+->Detection Event: The Watchdog successfully identifies when environmentState is altered from 0 to 1.
+->Neutralization (Soft-Kill): Instead of a simple process termination, the engine injects a "Lockdown Signal" (value 99) back into the app, allowing it to perform a graceful "return 0 success" shutdown.
+->Limitations: Current implementation requires administrative privileges and uses static memory addresses for demonstration; future iterations could implement signature-based scanning for dynamic memory allocation.
+
+
+
+6) Conclusions 
+The Memory Watchdog Engine successfully demonstrates that robust application integrity can be maintained through dedicated user-mode monitoring. The integration of high-speed polling and reactive memory injection provides a safer, more stable alternative to traditional anti-tamper methods, proving highly effective for local process security.
+
+
+--------------------------------------------------------------------------------------------------------------------------

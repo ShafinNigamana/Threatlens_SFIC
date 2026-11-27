@@ -8,7 +8,27 @@ import csv
 import io
 from datetime import datetime
 
-from threat_db import SEVERITY_EMOJI
+
+def _pdf_safe(text: str) -> str:
+    """Normalize text for fpdf2 Helvetica (latin-1) by replacing common Unicode & stripping emojis."""
+    if not text:
+        return ""
+    replacements = {
+        "\u2014": "-",
+        "\u2013": "-",
+        "\u2022": "*",
+        "\u2192": "->",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u00b1": "+/-",
+        "\r": "",
+    }
+    s = str(text)
+    for k, v in replacements.items():
+        s = s.replace(k, v)
+    return s.encode("latin-1", "ignore").decode("latin-1")
 
 
 def export_csv(analysis_result: dict) -> str:
@@ -97,7 +117,7 @@ def export_pdf(analysis_result: dict, ai_result: dict = None) -> bytes:
     
     if summary.get("top_processes"):
         procs = ", ".join(f"{name} ({count})" for name, count in summary["top_processes"])
-        pdf.cell(0, 7, f"Top Suspicious Processes: {procs}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 7, _pdf_safe(f"Top Suspicious Processes: {procs}"), new_x="LMARGIN", new_y="NEXT")
     
     pdf.ln(5)
     
@@ -108,18 +128,20 @@ def export_pdf(analysis_result: dict, ai_result: dict = None) -> bytes:
         pdf.set_font("Helvetica", "", 10)
         
         if ai_result.get("risk_score") is not None:
-            pdf.cell(0, 7, f"Risk Score: {ai_result['risk_score']}/100 - {ai_result.get('risk_label', 'N/A')}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 7, _pdf_safe(f"Risk Score: {ai_result['risk_score']}/100 - {ai_result.get('risk_label', 'N/A')}"), new_x="LMARGIN", new_y="NEXT")
         
         if ai_result.get("ai_analysis"):
             pdf.ln(3)
-            pdf.multi_cell(0, 5, ai_result["ai_analysis"][:2000])
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(pdf.epw, 5, _pdf_safe(ai_result["ai_analysis"][:2000]))
         
         if ai_result.get("attack_chain"):
             pdf.ln(3)
             pdf.set_font("Helvetica", "B", 11)
             pdf.cell(0, 7, "Attack Chain:", new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 10)
-            pdf.multi_cell(0, 5, ai_result["attack_chain"][:1500])
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(pdf.epw, 5, _pdf_safe(ai_result["attack_chain"][:1500]))
         
         if ai_result.get("recommendations"):
             pdf.ln(3)
@@ -127,7 +149,8 @@ def export_pdf(analysis_result: dict, ai_result: dict = None) -> bytes:
             pdf.cell(0, 7, "Recommendations:", new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 10)
             for i, rec in enumerate(ai_result["recommendations"][:5], 1):
-                pdf.multi_cell(0, 5, f"{i}. {rec}")
+                pdf.set_x(pdf.l_margin)
+                pdf.multi_cell(pdf.epw, 5, _pdf_safe(f"{i}. {rec}"))
                 pdf.ln(2)
         
         pdf.ln(5)
@@ -144,26 +167,26 @@ def export_pdf(analysis_result: dict, ai_result: dict = None) -> bytes:
             pdf.add_page()
         
         sev = threat["severity"].upper()
-        emoji = SEVERITY_EMOJI.get(threat["severity"], "⚪")
         
         pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(0, 6, f"{emoji} [{sev}] {threat['threat_type']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, _pdf_safe(f"[{sev}] {threat['threat_type']}"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.set_font("Helvetica", "", 9)
-        pdf.cell(0, 5, f"Time: {threat['timestamp']}  |  Process: {threat['process_name']} (PID: {threat['pid']})", new_x="LMARGIN", new_y="NEXT")
-        pdf.cell(0, 5, f"Operation: {threat['operation']}  |  Result: {threat['result']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 5, _pdf_safe(f"Time: {threat['timestamp']}  |  Process: {threat['process_name']} (PID: {threat['pid']})"), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 5, _pdf_safe(f"Operation: {threat['operation']}  |  Result: {threat['result']}"), new_x="LMARGIN", new_y="NEXT")
         
         if threat["path"]:
             path_display = threat["path"][:120]
-            pdf.cell(0, 5, f"Path: {path_display}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 5, _pdf_safe(f"Path: {path_display}"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.set_font("Helvetica", "I", 8)
         desc = threat["description"][:250]
-        pdf.multi_cell(0, 4, desc)
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(pdf.epw, 4, _pdf_safe(desc))
         
         if threat.get("mitre_id") and threat["mitre_id"] != "N/A":
             pdf.set_font("Helvetica", "", 8)
-            pdf.cell(0, 4, f"MITRE ATT&CK: {threat['mitre_id']}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 4, _pdf_safe(f"MITRE ATT&CK: {threat['mitre_id']}"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.ln(4)
     

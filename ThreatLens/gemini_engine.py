@@ -11,6 +11,10 @@ Falls back gracefully to offline-only mode if unavailable.
 import os
 import socket
 import json
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 def is_online() -> bool:
@@ -47,11 +51,16 @@ def analyze_with_gemini(suspicious_logs: str, summary: dict) -> dict | None:
         return None
     
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            use_new_sdk = True
+        except ImportError:
+            import google.generativeai as genai_legacy
+            genai_legacy.configure(api_key=api_key)
+            model = genai_legacy.GenerativeModel("gemini-2.0-flash")
+            use_new_sdk = False
+
         prompt = f"""You are ThreatLens, a cybersecurity threat analyst AI. Analyze these ProcMon (Process Monitor) log entries that have been flagged as suspicious by our rule-based detection engine.
 
 DETECTION SUMMARY:
@@ -84,8 +93,14 @@ RULES:
 - Keep language accessible and educational
 """
         
-        response = model.generate_content(prompt)
-        text = response.text.strip()
+        if use_new_sdk:
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+            )
+        else:
+            response = model.generate_content(prompt)
+        text = (response.text or "").strip()
         
         # Strip markdown code fences if Gemini wraps in ```json ... ```
         if text.startswith("```"):

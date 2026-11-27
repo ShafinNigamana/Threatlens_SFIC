@@ -35,19 +35,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function checkStatus() {
   const badge = document.getElementById("statusBadge");
+  const autoBtn = document.getElementById("modeAutoBtn");
   try {
     const res = await fetch("/api/status");
     const data = await res.json();
     if (data.online && data.has_api_key) {
       badge.innerHTML = '<span class="dot online"></span><span>Online • AI-Enhanced Ready</span>';
+      if (autoBtn) autoBtn.style.display = "";
     } else if (data.online) {
       badge.innerHTML = '<span class="dot warn"></span><span>🔒 Data Privacy Mode (No API Key)</span>';
+      if (autoBtn) autoBtn.style.display = "none";
+      setScanMode("offline");
     } else {
       badge.innerHTML = '<span class="dot offline"></span><span>🔒 Data Privacy Mode (Offline)</span>';
+      if (autoBtn) autoBtn.style.display = "none";
       setScanMode("offline");
     }
   } catch {
     badge.innerHTML = '<span class="dot offline"></span><span>🔒 Data Privacy Mode (Offline)</span>';
+    if (autoBtn) autoBtn.style.display = "none";
     setScanMode("offline");
   }
 }

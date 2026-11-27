@@ -1,123 +1,202 @@
-"""ThreatLens Flask backend — offline-first ProcMon log analyzer with optional Gemini AI."""
+"""
+ThreatLens — Flask Application (Main Entry Point)
+===================================================
+Smart offline-first ProcMon log analyzer with AI-enhanced threat detection.
+
+Run:
+    cd threatlens
+    pip install -r requirements.txt
+    set GEMINI_API_KEY=your_key_here    (optional — for AI mode)
+    python app.py
+
+Then open: http://localhost:5000
+"""
 
 import os
-from pathlib import Path
-from flask import Flask, jsonify, render_template, request, send_file
+import json
+from datetime import datetime
+
+from flask import Flask, request, render_template, jsonify, send_file, session
 import io
 
-from engine import analyze_events, parse_procmon_csv
-from exporter import generate_csv_report, generate_pdf_report
-from gemini_engine import get_ai_context, is_online
+from engine import parse_procmon_csv, analyze_logs, get_entries_for_ai
+from gemini_engine import is_online, analyze_with_gemini
+from exporter import export_csv, export_pdf
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB max CSV upload
+app.secret_key = os.urandom(24)
 
-BASE_DIR = Path(__file__).resolve().parent
-PROCMON_SAMPLES_DIR = (
-    BASE_DIR.parent / "Repo_sfic_project" / "Test-Results-Repeat" / "Procmon_system_logs"
-)
-
-SAMPLE_FILES = {
-    "dryrun1": PROCMON_SAMPLES_DIR / "Logfile_1_success_dryrun.CSV",
-    "dryrun2": PROCMON_SAMPLES_DIR / "Logfile_2_success_dryrun.CSV",
-}
-
-# In-memory store for single-PC local session (per build plan)
-LAST_SESSION = {
-    "filename": "capture.csv",
-    "analysis": None,
-}
+# In-memory store for the last analysis (simple — no DB needed)
+_last_analysis = {}
+_last_ai_result = {}
+_last_entries = []
 
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    """Serve the main single-page application."""
+    online = is_online()
+    return render_template("index.html", is_online=online)
 
 
 @app.route("/api/status")
 def api_status():
-    online = is_online()
-    has_key = bool(os.getenv("GEMINI_API_KEY", "").strip())
-    return jsonify(
-        {
-            "online": online and has_key,
-            "internet": online,
-            "api_key_configured": has_key,
-            "samples_available": {k: p.exists() for k, p in SAMPLE_FILES.items()},
-        }
-    )
+    """Check online/offline status and API key availability."""
+    from gemini_engine import get_api_key
+    return jsonify({
+        "online": is_online(),
+        "has_api_key": bool(get_api_key()),
+        "timestamp": datetime.now().isoformat(),
+    })
 
 
-@app.route("/api/analyze", methods=["POST"])
-def api_analyze():
-    file_bytes = None
-    filename = "capture.csv"
-
-    if "file" in request.files and request.files["file"].filename:
-        uploaded = request.files["file"]
-        filename = uploaded.filename
-        file_bytes = uploaded.read()
-    elif request.is_json:
-        sample_key = (request.get_json(silent=True) or {}).get("sample")
-        sample_path = SAMPLE_FILES.get(sample_key)
-        if sample_path and sample_path.exists():
-            filename = sample_path.name
-            file_bytes = sample_path.read_bytes()
-
-    if not file_bytes:
-        return jsonify({"error": "No ProcMon CSV file provided."}), 400
-
-    events = parse_procmon_csv(file_bytes)
-    if not events:
-        return (
-            jsonify(
-                {
-                    "error": (
-                        "Could not parse any ProcMon events. Ensure the file is a valid "
-                        "ProcMon CSV export with Time of Day, Process Name, and Operation columns."
-                    )
-                }
-            ),
-            400,
-        )
-
-    analysis = analyze_events(events)
-    ai_result = get_ai_context(analysis)
-    analysis["ai"] = ai_result
+@app.route("/api/upload", methods=["POST"])
+def api_upload():
+    """
+    Upload and analyze a ProcMon CSV file.
+    
+    Accepts:
+      - multipart/form-data with file field 'logfile'
+      - JSON body with 'content' field (raw CSV text)
+    
+    Returns JSON analysis results.
+    """
+    global _last_analysis, _last_ai_result, _last_entries
+    
+    # --- Get CSV content ---
+    csv_content = None
+    filename = "uploaded_log.csv"
+    
+    if "logfile" in request.files:
+        file = request.files["logfile"]
+        if file.filename:
+            filename = file.filename
+            csv_content = file.read().decode("utf-8-sig", errors="replace")
+    elif request.is_json and request.json.get("content"):
+        csv_content = request.json["content"]
+        filename = request.json.get("filename", "pasted_log.csv")
+    
+    if not csv_content or len(csv_content.strip()) < 10:
+        return jsonify({"error": "No valid CSV content received. Please upload a ProcMon CSV export."}), 400
+    
+    # --- Parse CSV ---
+    try:
+        entries = parse_procmon_csv(csv_content)
+    except Exception as e:
+        return jsonify({"error": f"Failed to parse CSV: {str(e)}. Ensure this is a ProcMon CSV export."}), 400
+    
+    if not entries:
+        return jsonify({"error": "No valid log entries found in the CSV. Check that it's a ProcMon export with standard columns (Time of Day, Process Name, PID, Operation, Path, Result, Detail)."}), 400
+    
+    # --- Run offline rule-based analysis ---
+    analysis = analyze_logs(entries)
     analysis["filename"] = filename
+    
+    # --- Run AI analysis if online ---
+    ai_result = None
+    use_ai = request.args.get("ai", "true").lower() != "false"
+    
+    if use_ai and analysis["summary"]["total_threats"] > 0:
+        suspicious_text = get_entries_for_ai(entries, analysis["threats"])
+        ai_result = analyze_with_gemini(suspicious_text, analysis["summary"])
+    
+    # Store for export
+    _last_analysis = analysis
+    _last_ai_result = ai_result or {}
+    _last_entries = entries
+    
+    # --- Build response ---
+    response = {
+        "success": True,
+        "filename": filename,
+        "total_entries": analysis["total_entries"],
+        "scan_time": analysis["scan_time"],
+        "summary": analysis["summary"],
+        "threats": analysis["threats"][:200],  # Cap for JSON response
+        "timeline": analysis["timeline"][:200],
+        "ai_result": ai_result,
+        "mode": "ai_enhanced" if ai_result else "offline",
+    }
+    
+    return jsonify(response)
 
-    LAST_SESSION["filename"] = filename
-    LAST_SESSION["analysis"] = analysis
-    return jsonify(analysis)
 
-
-@app.route("/export/pdf")
-def export_pdf():
-    analysis = LAST_SESSION.get("analysis")
-    if not analysis:
-        return jsonify({"error": "No analysis available to export."}), 400
-    pdf_bytes = generate_pdf_report(analysis, LAST_SESSION.get("filename", "capture.csv"))
+@app.route("/api/export/csv")
+def api_export_csv():
+    """Download the last analysis as a CSV file."""
+    global _last_analysis
+    if not _last_analysis:
+        return jsonify({"error": "No analysis available. Upload and analyze a log first."}), 400
+    
+    csv_content = export_csv(_last_analysis)
+    
+    buf = io.BytesIO(csv_content.encode("utf-8-sig"))
+    buf.seek(0)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name="ThreatLens_Report.pdf",
-    )
-
-
-@app.route("/export/csv")
-def export_csv():
-    analysis = LAST_SESSION.get("analysis")
-    if not analysis:
-        return jsonify({"error": "No analysis available to export."}), 400
-    csv_bytes = generate_csv_report(analysis)
-    return send_file(
-        io.BytesIO(csv_bytes),
+        buf,
         mimetype="text/csv",
         as_attachment=True,
-        download_name="ThreatLens_Threats.csv",
+        download_name=f"threatlens_report_{timestamp}.csv"
     )
+
+
+@app.route("/api/export/pdf")
+def api_export_pdf():
+    """Download the last analysis as a PDF report."""
+    global _last_analysis, _last_ai_result
+    if not _last_analysis:
+        return jsonify({"error": "No analysis available. Upload and analyze a log first."}), 400
+    
+    try:
+        pdf_bytes = export_pdf(_last_analysis, _last_ai_result)
+    except ImportError as e:
+        return jsonify({"error": str(e)}), 500
+    
+    buf = io.BytesIO(pdf_bytes)
+    buf.seek(0)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return send_file(
+        buf,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"threatlens_report_{timestamp}.pdf"
+    )
+
+
+@app.route("/api/threat/<int:index>")
+def api_threat_detail(index):
+    """Get detailed info for a specific threat by its index in the timeline."""
+    global _last_analysis
+    if not _last_analysis:
+        return jsonify({"error": "No analysis available."}), 400
+    
+    timeline = _last_analysis.get("timeline", [])
+    if index < 0 or index >= len(timeline):
+        return jsonify({"error": f"Threat index {index} out of range (0-{len(timeline)-1})."}), 404
+    
+    return jsonify({"success": True, "threat": timeline[index]})
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    print("\n" + "=" * 60)
+    print("  ThreatLens — Endpoint Behavioral Analysis Engine")
+    print("  SFIC 2026 | CHARUSAT, Anand, Gujarat")
+    print("=" * 60)
+    
+    if is_online():
+        from gemini_engine import get_api_key
+        if get_api_key():
+            print("  Mode: 🟢 AI-Enhanced (Gemini API connected)")
+        else:
+            print("  Mode: 🟡 Online but no API key set")
+            print("  Set: set GEMINI_API_KEY=your_key")
+    else:
+        print("  Mode: 🔴 Offline (Rule engine only)")
+    
+    print(f"  Server: http://localhost:5000")
+    print("=" * 60 + "\n")
+    
+    app.run(host="0.0.0.0", port=5000, debug=True)
